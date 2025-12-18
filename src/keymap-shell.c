@@ -41,7 +41,6 @@ struct keymap_slot {
     const char* name;
 
     bool is_free;
-    bool is_active;
 };
 
 struct keymap_shell_config {
@@ -219,7 +218,6 @@ static void free_slot(struct keymap_slot* slot) {
     slot->order_size = 0;
     slot->total_size = 0;
     slot->is_free = true;
-    slot->is_active = false;
 }
 
 static void free_all_slots(void) {
@@ -489,6 +487,7 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
 
 static int cmd_restore(const struct shell *sh, const size_t argc, char **argv) {
     clear_slot("keymap");
+    zmk_keymap_discard_changes();
     shprint(sh, "Successfully restored.");
     return 0;
 }
@@ -519,6 +518,7 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
         return 0;
     }
 
+    int err = 0;
     char* endptr;
     uint8_t slot_idx;
     const unsigned long parsed = strtoul(argv[1], &endptr, 10);
@@ -548,10 +548,7 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
 
     clear_slot("keymap");
 
-    char key[32];
-    int err = 0;
     const struct keymap_slot* slot = &config.slots[slot_idx];
-
     if (slot->order_size > 0) {
         err = settings_save_one("keymap/layer_order", slot->order_data, slot->order_size);
         if (err != 0) {
@@ -560,6 +557,7 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
         }
     }
 
+    char key[32];
     for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
         if (slot->names_size[i] != 0) {
             sprintf(key, "keymap/l_n/%d", i);
@@ -582,8 +580,8 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
     }
 
     settings_commit();
+    zmk_keymap_discard_changes();
     shprint(sh, "Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
-    shprint(sh, "Please wait 5 seconds and restart the device to apply changes.");
     return 0;
 }
 
