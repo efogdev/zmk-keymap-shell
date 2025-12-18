@@ -4,7 +4,8 @@ Shell commands and behaviors (ToDo) for managing multiple keymap profiles on ZMK
 
 ## What it does
 
-Lets you save and switch between different keymap configurations without reflashing. Example use cases: switching hands, multiple users. 
+Lets you save and switch between different keymap configurations without reflashing. 
+Example use cases include switching between left and right hand, multiple users, a gaming profile with no layers. 
 
 ## Usage
 
