@@ -1,0 +1,11 @@
+if SHELL
+
+config ZMK_KEYMAP_SHELL
+bool "Keymap shell commands"
+default y
+
+config ZMK_KEYMAP_SHELL_SLOTS
+int "Maximum stored keymaps"
+default 4
+
+endif
