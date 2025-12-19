@@ -6,6 +6,7 @@
 #include <zephyr/settings/settings.h>
 #include "zmk/keymap.h"
 #include "zmk/matrix.h"
+#include "zmk/studio/core.h"
 
 #define DT_DRV_COMPAT zmk_keymap_shell
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -283,6 +284,12 @@ static int cmd_destroy(const struct shell *sh, const size_t argc, char **argv) {
         return 0;
     }
 
+    const enum zmk_studio_core_lock_state lock_state = zmk_studio_core_get_lock_state();
+    if (lock_state == ZMK_STUDIO_CORE_LOCK_STATE_LOCKED) {
+        shprint(sh, "Unlock ZMK Studio first.");
+        return -EACCES;
+    }
+
     char* endptr;
     const uint8_t slot_idx = strtoul(argv[1], &endptr, 10) - 1;
     if (slot_idx > CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
@@ -302,7 +309,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
     if (!config.initialized) {
         shprint(sh, "Not initialized!");
         shprint(sh, "Use \"keymap init\" or \"keymap status\" first.");
-        return 1;
+        return -EBUSY;
     }
 
     if (argc <= 2) {
@@ -310,6 +317,12 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
         shprint(sh, "Example: ");
         shprint(sh, "  keymap save 2 left_hand");
         return 0;
+    }
+
+    const enum zmk_studio_core_lock_state lock_state = zmk_studio_core_get_lock_state();
+    if (lock_state == ZMK_STUDIO_CORE_LOCK_STATE_LOCKED) {
+        shprint(sh, "Unlock ZMK Studio first.");
+        return -EACCES;
     }
 
     char* endptr;
