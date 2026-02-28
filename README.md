@@ -1,6 +1,6 @@
 # zmk-keymap-shell
 
-Shell commands and behaviors (ToDo) for managing multiple keymap profiles on ZMK keyboards.
+Shell commands and behavior(s) for managing multiple keymap profiles on ZMK keyboards.
 
 ## What it does
 
@@ -21,6 +21,10 @@ keymap free                # deinit and free memory
 ```
 
 Full command list: `init`, `status`, `save`, `overwrite`, `activate`, `destroy`, `restore`, `free`
+
+## Behaviors
+
+For now, there is only one. Use `&skmp` with 1 parameter (slot number) to switch to the slot. Pass `0` to restore defaults.
 
 ## Requirements
 

@@ -1,0 +1,9 @@
+/ {
+	behaviors {
+		skmp: switch-keymap {
+			compatible = "zmk,behavior-switch-keymap";
+			#binding-cells = <1>;
+			display-name = "Switch keymap";
+		};
+	};
+};

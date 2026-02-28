@@ -7,6 +7,7 @@
 #include "zmk/keymap.h"
 #include "zmk/matrix.h"
 #include "zmk/studio/core.h"
+#include "drivers/keymap_shell.h"
 
 #define DT_DRV_COMPAT zmk_keymap_shell
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -498,9 +499,13 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
     return 0;
 }
 
-static int cmd_restore(const struct shell *sh, const size_t argc, char **argv) {
+void keymap_restore() {
     clear_slot("keymap");
     zmk_keymap_discard_changes();
+}
+
+static int cmd_restore(const struct shell *sh, const size_t argc, char **argv) {
+    keymap_restore();
     shprint(sh, "Successfully restored.");
     return 0;
 }
@@ -513,6 +518,59 @@ static int cmd_free(const struct shell *sh, const size_t argc, char **argv) {
 
     free_all_slots();
     shprint(sh, "Successfully freed all allocated memory and uninitialized.");
+    return 0;
+}
+
+int keymap_shell_activate_slot(uint8_t slot_idx) {
+    if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
+        return -EINVAL;
+    }
+
+    if (!config.initialized) {
+        return -EBUSY;
+    }
+
+    if (config.slots[slot_idx].is_free) {
+        return -ENOENT;
+    }
+
+    clear_slot("keymap");
+
+    int err = 0;
+    const struct keymap_slot* slot = &config.slots[slot_idx];
+    if (slot->order_size > 0) {
+        err = settings_save_one("keymap/layer_order", slot->order_data, slot->order_size);
+        if (err != 0) {
+            LOG_ERR("Failed to activate layer order! Error code = %d", err);
+            return err;
+        }
+    }
+
+    char key[32];
+    for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
+        if (slot->names_size[i] != 0) {
+            sprintf(key, "keymap/l_n/%d", i);
+            err = settings_save_one(key, slot->names_data[i], slot->names_size[i]);
+            if (err != 0) {
+                LOG_ERR("Failed to activate layer name! Error code = %d", err);
+                return err;
+            }
+        }
+
+        const struct layer_bindings* layer_bindings = &slot->bindings[i];
+        for (uint16_t j = 0; j < layer_bindings->count; j++) {
+            sprintf(key, "keymap/l/%d/%d", i, layer_bindings->entries[j].index);
+            err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
+            if (err != 0) {
+                LOG_ERR("Failed to activate layer binding! Error code = %d", err);
+                return err;
+            }
+        }
+    }
+
+    settings_commit();
+    zmk_keymap_discard_changes();
+    LOG_INF("Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
     return 0;
 }
 
@@ -554,47 +612,19 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
         }
     }
 
-    if (config.slots[slot_idx].is_free) {
+    err = keymap_shell_activate_slot(slot_idx);
+    if (err == -EINVAL) {
+        shprint(sh, "Invalid slot!");
+        return err;
+    } else if (err == -ENOENT) {
         shprint(sh, "The slot is empty!");
-        return -ENOENT;
+        return err;
+    } else if (err != 0) {
+        shprint(sh, "Failed to activate slot! Error code = %d", err);
+        return err;
     }
 
-    clear_slot("keymap");
-
-    const struct keymap_slot* slot = &config.slots[slot_idx];
-    if (slot->order_size > 0) {
-        err = settings_save_one("keymap/layer_order", slot->order_data, slot->order_size);
-        if (err != 0) {
-            shprint(sh, "Failed to activate layer order! Error code = %d", err);
-            return err;
-        }
-    }
-
-    char key[32];
-    for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
-        if (slot->names_size[i] != 0) {
-            sprintf(key, "keymap/l_n/%d", i);
-            err = settings_save_one(key, slot->names_data[i], slot->names_size[i]);
-            if (err != 0) {
-                shprint(sh, "Failed to activate layer name! Error code = %d", err);
-                return err;
-            }
-        }
-
-        const struct layer_bindings* layer_bindings = &slot->bindings[i];
-        for (uint16_t j = 0; j < layer_bindings->count; j++) {
-            sprintf(key, "keymap/l/%d/%d", i, layer_bindings->entries[j].index);
-            err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
-            if (err != 0) {
-                shprint(sh, "Failed to activate layer binding! Error code = %d", err);
-                return err;
-            }
-        }
-    }
-
-    settings_commit();
-    zmk_keymap_discard_changes();
-    shprint(sh, "Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
+    shprint(sh, "Slot %d (%s) successfully activated!", slot_idx + 1, config.slots[slot_idx].name);
     return 0;
 }
 

@@ -1,0 +1,12 @@
+description: Switch between keymaps in runtime
+compatible: "zmk,behavior-switch-keymap"
+include: one_param.yaml
+
+properties:
+  feedback-gpios:
+    type: phandle-array
+  feedback-extra-gpios:
+    type: phandle-array
+  feedback-duration:
+    type: int
+    default: 0
