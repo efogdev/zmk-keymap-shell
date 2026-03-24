@@ -104,6 +104,9 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
         }
         
         name_buffer[len] = '\0';
+        if (data->slot->name != NULL) {
+            free((void*)data->slot->name);
+        }
         data->slot->name = name_buffer;
         data->slot->total_size += len;
     } else if (settings_name_steq(key, "layer_order", &next)) {
@@ -126,6 +129,10 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
         }
     } else if (settings_name_steq(key, "l_n", &next) && next) {
         const uint8_t layer = strtoul(next, &endptr, 10);
+        if (endptr == next || (*endptr != '\0' && *endptr != '/')) {
+            LOG_ERR("Invalid layer index in settings key l_n");
+            return -EINVAL;
+        }
         data->slot->total_size += len;
         data->slot->names_size[layer] = len;
 
@@ -145,9 +152,13 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
         }
     } else if (settings_name_steq(key, "l", &next) && next) {
         const uint8_t layer = strtoul(next, &endptr, 10);
+        if (endptr == next || *endptr != '/') {
+            LOG_ERR("Invalid layer index in settings key l");
+            return -EINVAL;
+        }
         struct layer_bindings* layer_bindings = &data->slot->bindings[layer];
         const uint16_t new_count = layer_bindings->count + 1;
-        struct binding_entry* new_entries = realloc(layer_bindings->entries, new_count * sizeof(struct binding_entry));
+        struct binding_entry* new_entries = realloc(layer_bindings->entries, (size_t)new_count * sizeof(struct binding_entry));
         if (new_entries == NULL && new_count > 0) {
             LOG_ERR("Failed to reallocate entries array for layer %d!", layer);
             return -ENOMEM;
@@ -168,7 +179,13 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
             return -EIO;
         }
 
-        const uint8_t pos = strtoul(endptr + 1, &endptr, 10);
+        const char *pos_start = endptr + 1;
+        const uint8_t pos = strtoul(pos_start, &endptr, 10);
+        if (endptr == pos_start) {
+            LOG_ERR("Invalid binding position in settings key");
+            free(binding_data);
+            return -EINVAL;
+        }
         layer_bindings->entries[layer_bindings->count].index = pos;
         layer_bindings->entries[layer_bindings->count].length = len;
         layer_bindings->entries[layer_bindings->count].data = binding_data;
@@ -488,7 +505,7 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
                 found_active = true;
             }
 
-            shprint(sh, " %sSlot %d: %d bytes, name \"%s\"", is_active ? ">" : " ", i + 1, slot->total_size, slot->name);
+            shprint(sh, " %sSlot %d: %d bytes, name \"%s\"", is_active ? ">" : " ", i + 1, slot->total_size, slot->name ? slot->name : "(unnamed)");
         }
     }
 
