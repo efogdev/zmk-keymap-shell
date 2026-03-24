@@ -59,13 +59,14 @@ struct cb_param {
 static struct keymap_shell_config config;
 
 static int clear_slot_cb(const char *key, const size_t len, const settings_read_cb read_cb, void *cb_arg, void *param) {
-    char* name_buffer = malloc(strlen(key) + 16);
+    const size_t sz = strlen(key) + 16;
+    char* name_buffer = malloc(sz);
     if (name_buffer == NULL) {
         LOG_ERR("Failed to allocate memory for key name!");
         return -ENOMEM;
     }
 
-    sprintf(name_buffer, "%s/%s", *(const char **) param, key);
+    snprintf(name_buffer, sz, "%s/%s", *(const char **) param, key);
     return settings_delete(name_buffer);
 }
 
@@ -255,7 +256,7 @@ static void load_system(const struct shell *sh) {
     shprint(sh, "Reading slots...");
     for (int i = 0; i < CONFIG_ZMK_KEYMAP_SHELL_SLOTS; i++) {
         char key[24];
-        sprintf(key, "slots/%d", i);
+        snprintf(key, sizeof(key), "slots/%d", i);
         data.slot = &config.slots[i];
         err = settings_load_subtree_direct(key, load_slot_cb, &data);
         if (err != 0) {
@@ -299,7 +300,7 @@ static int cmd_destroy(const struct shell *sh, const size_t argc, char **argv) {
     }
 
     char key[16];
-    sprintf(key, "slots/%d", slot_idx);
+    snprintf(key, sizeof(key), "slots/%d", slot_idx);
     clear_slot(key);
 
     shprint(sh, "Successfully destroyed slot.");
@@ -346,10 +347,10 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
     }
 
     char key[32];
-    sprintf(key, "slots/%d", slot_idx);
+    snprintf(key, sizeof(key), "slots/%d", slot_idx);
     clear_slot(key);
 
-    sprintf(key, "slots/%d/_name", slot_idx);
+    snprintf(key, sizeof(key), "slots/%d/_name", slot_idx);
     int err = settings_save_one(key, argv[2], strlen(argv[2]));
     if (err != 0) {
         shprint(sh, "Failed to save slot name! Error code = %d", err);
@@ -357,7 +358,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
     }
 
     if (config.system.order_size > 0) {
-        sprintf(key, "slots/%d/layer_order", slot_idx);
+        snprintf(key, sizeof(key), "slots/%d/layer_order", slot_idx);
         err = settings_save_one(key, config.system.order_data, config.system.order_size);
         if (err != 0) {
             shprint(sh, "Failed to save layer order! Error code = %d", err);
@@ -367,7 +368,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
 
     for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
         if (config.system.names_size[i] != 0) {
-            sprintf(key, "slots/%d/l_n/%d", slot_idx, i);
+            snprintf(key, sizeof(key), "slots/%d/l_n/%d", slot_idx, i);
             err = settings_save_one(key, config.system.names_data[i], config.system.names_size[i]);
             if (err != 0) {
                 shprint(sh, "Failed to save layer name! Error code = %d", err);
@@ -377,7 +378,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
 
         const struct layer_bindings* layer_bindings = &config.system.bindings[i];
         for (uint16_t j = 0; j < layer_bindings->count; j++) {
-            sprintf(key, "slots/%d/l/%d/%d", slot_idx, i, layer_bindings->entries[j].index);
+            snprintf(key, sizeof(key), "slots/%d/l/%d/%d", slot_idx, i, layer_bindings->entries[j].index);
             err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
             if (err != 0) {
                 shprint(sh, "Failed to save layer binding! Error code = %d", err);
@@ -549,7 +550,7 @@ int keymap_shell_activate_slot(uint8_t slot_idx) {
     char key[32];
     for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
         if (slot->names_size[i] != 0) {
-            sprintf(key, "keymap/l_n/%d", i);
+            snprintf(key, sizeof(key), "keymap/l_n/%d", i);
             err = settings_save_one(key, slot->names_data[i], slot->names_size[i]);
             if (err != 0) {
                 LOG_ERR("Failed to activate layer name! Error code = %d", err);
@@ -559,7 +560,7 @@ int keymap_shell_activate_slot(uint8_t slot_idx) {
 
         const struct layer_bindings* layer_bindings = &slot->bindings[i];
         for (uint16_t j = 0; j < layer_bindings->count; j++) {
-            sprintf(key, "keymap/l/%d/%d", i, layer_bindings->entries[j].index);
+            snprintf(key, sizeof(key), "keymap/l/%d/%d", i, layer_bindings->entries[j].index);
             err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
             if (err != 0) {
                 LOG_ERR("Failed to activate layer binding! Error code = %d", err);
