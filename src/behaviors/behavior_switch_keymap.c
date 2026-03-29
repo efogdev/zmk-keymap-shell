@@ -16,7 +16,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 static uint8_t g_dev_num = 0;
 static const char* g_devices[CONFIG_ZMK_KEYMAP_SHELL_SLOTS] = { NULL };
-static int g_from_settings = -1;
 
 struct behavior_switch_keymap_config {
     const struct gpio_dt_spec feedback_gpios;
