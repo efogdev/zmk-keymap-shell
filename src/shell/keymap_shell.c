@@ -13,6 +13,12 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_SHELL) && IS_ENABLED(CONFIG_ZMK_KEYMAP_SHELL) && IS_ENABLED(CONFIG_ZMK_KEYMAP_SETTINGS_STORAGE)
+
+#if IS_ENABLED(CONFIG_ZMK_ADAPTIVE_FEEDBACK)
+#include <zmk_adaptive_feedback/adaptive_feedback.h>
+ZAF_CUSTOM_EVENT_DEFINE(ks_keymap_changed, "keymap-slot-switched");
+#endif
+
 #define shprint(_sh, _fmt, ...) \
 do { \
   if ((_sh) != NULL) \
@@ -520,6 +526,9 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
 void keymap_restore() {
     clear_slot("keymap");
     zmk_keymap_discard_changes();
+#if IS_ENABLED(CONFIG_ZMK_ADAPTIVE_FEEDBACK)
+    zaf_custom_event_trigger(&ks_keymap_changed);
+#endif
 }
 
 static int cmd_restore(const struct shell *sh, const size_t argc, char **argv) {
@@ -539,7 +548,7 @@ static int cmd_free(const struct shell *sh, const size_t argc, char **argv) {
     return 0;
 }
 
-int keymap_shell_activate_slot(uint8_t slot_idx) {
+int keymap_shell_activate_slot(const uint8_t slot_idx) {
     if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
         return -EINVAL;
     }
@@ -589,6 +598,9 @@ int keymap_shell_activate_slot(uint8_t slot_idx) {
     settings_commit();
     zmk_keymap_discard_changes();
     LOG_INF("Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
+#if IS_ENABLED(CONFIG_ZMK_ADAPTIVE_FEEDBACK)
+    zaf_custom_event_trigger(&ks_keymap_changed);
+#endif
     return 0;
 }
 
