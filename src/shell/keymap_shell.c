@@ -326,7 +326,7 @@ static int cmd_destroy(const struct shell *sh, const size_t argc, char **argv) {
     snprintf(key, sizeof(key), "slots/%d", slot_idx);
     clear_slot(key);
 
-    shprint(sh, "Successfully destroyed slot.");
+    shprint(sh, "Destroyed.");
     return 0;
 }
 
@@ -411,7 +411,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
     }
 
     settings_commit();
-    shprint(sh, "Slot %d (%s) successfully saved!", slot_idx + 1, argv[2]);
+    shprint(sh, "Saved: slot %d (%s).", slot_idx + 1, argv[2]);
     return 0;
 }
 
@@ -435,7 +435,7 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
 
     load_system(verbose ? sh : NULL);
     if (config.system.is_free) {
-        shprint(sh, "No changes detected: you are running the default keymap.");
+        shprint(sh, "No changes detected.");
         shprint(sh, "");
     }
 
@@ -533,7 +533,7 @@ void keymap_restore() {
 
 static int cmd_restore(const struct shell *sh, const size_t argc, char **argv) {
     keymap_restore();
-    shprint(sh, "Successfully restored.");
+    shprint(sh, "Restored.");
     return 0;
 }
 
@@ -544,7 +544,7 @@ static int cmd_free(const struct shell *sh, const size_t argc, char **argv) {
     }
 
     free_all_slots();
-    shprint(sh, "Successfully freed all allocated memory and uninitialized.");
+    shprint(sh, "Freed and uninitialized.");
     return 0;
 }
 
@@ -654,7 +654,7 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
         return err;
     }
 
-    shprint(sh, "Slot %d (%s) successfully activated!", slot_idx + 1, config.slots[slot_idx].name);
+    shprint(sh, "Activated: slot %d (%s).", slot_idx + 1, config.slots[slot_idx].name);
     return 0;
 }
 
