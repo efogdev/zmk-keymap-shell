@@ -73,7 +73,9 @@ static int clear_slot_cb(const char *key, const size_t len, const settings_read_
     }
 
     snprintf(name_buffer, sz, "%s/%s", *(const char **) param, key);
-    return settings_delete(name_buffer);
+    const int rc = settings_delete(name_buffer);
+    free(name_buffer);
+    return rc;
 }
 
 static void clear_slot(const char* key) {
@@ -121,6 +123,9 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
         data->slot->order_size = len;
         data->slot->total_size += len;
 
+        if (data->slot->order_data != NULL) {
+            free(data->slot->order_data);
+        }
         data->slot->order_data = malloc(len);
         if (data->slot->order_data == NULL && len > 0) {
             LOG_ERR("Failed to allocate memory for layer order data!");
@@ -134,16 +139,24 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
             data->slot->order_data = NULL;
         }
     } else if (settings_name_steq(key, "l_n", &next) && next) {
-        const uint8_t layer = strtoul(next, &endptr, 10);
+        const unsigned long layer_raw = strtoul(next, &endptr, 10);
         if (endptr == next || (*endptr != '\0' && *endptr != '/')) {
-            LOG_ERR("Invalid layer index in settings key l_n");
+            LOG_ERR("Invalid layer index");
             return -EINVAL;
         }
+        if (layer_raw >= ZMK_KEYMAP_LAYERS_LEN) {
+            LOG_ERR("Layer index %lu out of range", layer_raw);
+            return -EINVAL;
+        }
+        const uint8_t layer = (uint8_t)layer_raw;
         data->slot->total_size += len;
         data->slot->names_size[layer] = len;
 
         shprint(data->sh, " > Found name for layer %d (%d bytes)", layer, len);
 
+        if (data->slot->names_data[layer] != NULL) {
+            free(data->slot->names_data[layer]);
+        }
         data->slot->names_data[layer] = malloc(len);
         if (data->slot->names_data[layer] == NULL && len > 0) {
             LOG_ERR("Failed to allocate memory for layer name data!");
@@ -157,11 +170,16 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
             data->slot->names_data[layer] = NULL;
         }
     } else if (settings_name_steq(key, "l", &next) && next) {
-        const uint8_t layer = strtoul(next, &endptr, 10);
+        const unsigned long layer_raw = strtoul(next, &endptr, 10);
         if (endptr == next || *endptr != '/') {
-            LOG_ERR("Invalid layer index in settings key l");
+            LOG_ERR("Invalid layer index");
             return -EINVAL;
         }
+        if (layer_raw >= ZMK_KEYMAP_LAYERS_LEN) {
+            LOG_ERR("Layer index %lu out of range", layer_raw);
+            return -EINVAL;
+        }
+        const uint8_t layer = (uint8_t)layer_raw;
         struct layer_bindings* layer_bindings = &data->slot->bindings[layer];
         const uint16_t new_count = layer_bindings->count + 1;
         struct binding_entry* new_entries = realloc(layer_bindings->entries, (size_t)new_count * sizeof(struct binding_entry));
@@ -265,13 +283,13 @@ static int keymap_shell_init(void) {
 }
 
 static void load_system(const struct shell *sh) {
-    keymap_shell_init();
+    free_all_slots();
     shprint(sh, "Reading system keymap...");
 
     struct cb_param data = { .sh = sh, .slot = &config.system };
     int err = settings_load_subtree_direct("keymap", load_slot_cb, &data);
     if (err != 0) {
-        LOG_ERR("failed to load system subtree for keymap: %d", err);
+        LOG_ERR("Failed to load system subtree for keymap: %d", err);
     }
     config.system.is_free = config.system.total_size == 0;
 
@@ -295,6 +313,52 @@ static void load_system(const struct shell *sh) {
 
 SYS_INIT(keymap_shell_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
+static void report_save_err(const struct shell *sh, const char *what, const int err) {
+    if (sh != NULL) {
+        shprint(sh, "Failed to access %s! Error code = %d", what, err);
+    } else {
+        LOG_ERR("Failed to access %s! Error code = %d", what, err);
+    }
+}
+
+static int save_slot_payload(const char *prefix, const struct keymap_slot *slot,
+                             const struct shell *sh) {
+    char key[40];
+    int err;
+
+    if (slot->order_size > 0) {
+        snprintf(key, sizeof(key), "%s/layer_order", prefix);
+        err = settings_save_one(key, slot->order_data, slot->order_size);
+        if (err != 0) {
+            report_save_err(sh, "layer order", err);
+            return err;
+        }
+    }
+
+    for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
+        if (slot->names_size[i] != 0) {
+            snprintf(key, sizeof(key), "%s/l_n/%d", prefix, i);
+            err = settings_save_one(key, slot->names_data[i], slot->names_size[i]);
+            if (err != 0) {
+                report_save_err(sh, "layer name", err);
+                return err;
+            }
+        }
+
+        const struct layer_bindings* layer_bindings = &slot->bindings[i];
+        for (uint16_t j = 0; j < layer_bindings->count; j++) {
+            snprintf(key, sizeof(key), "%s/l/%d/%d", prefix, i, layer_bindings->entries[j].index);
+            err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
+            if (err != 0) {
+                report_save_err(sh, "layer binding", err);
+                return err;
+            }
+        }
+    }
+
+    return 0;
+}
+
 static int cmd_destroy(const struct shell *sh, const size_t argc, char **argv) {
     if (!config.initialized) {
         shprint(sh, "Not initialized!");
@@ -317,7 +381,7 @@ static int cmd_destroy(const struct shell *sh, const size_t argc, char **argv) {
 
     char* endptr;
     const uint8_t slot_idx = strtoul(argv[1], &endptr, 10) - 1;
-    if (slot_idx > CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
+    if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
         shprint(sh, "Invalid slot!");
         return -EINVAL;
     }
@@ -352,7 +416,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
 
     char* endptr;
     const uint8_t slot_idx = strtoul(argv[1], &endptr, 10) - 1;
-    if (slot_idx > CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
+    if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
         shprint(sh, "Invalid slot!");
         return -EINVAL;
     }
@@ -380,34 +444,11 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
         return err;
     }
 
-    if (config.system.order_size > 0) {
-        snprintf(key, sizeof(key), "slots/%d/layer_order", slot_idx);
-        err = settings_save_one(key, config.system.order_data, config.system.order_size);
-        if (err != 0) {
-            shprint(sh, "Failed to save layer order! Error code = %d", err);
-            return err;
-        }
-    }
-
-    for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
-        if (config.system.names_size[i] != 0) {
-            snprintf(key, sizeof(key), "slots/%d/l_n/%d", slot_idx, i);
-            err = settings_save_one(key, config.system.names_data[i], config.system.names_size[i]);
-            if (err != 0) {
-                shprint(sh, "Failed to save layer name! Error code = %d", err);
-                return err;
-            }
-        }
-
-        const struct layer_bindings* layer_bindings = &config.system.bindings[i];
-        for (uint16_t j = 0; j < layer_bindings->count; j++) {
-            snprintf(key, sizeof(key), "slots/%d/l/%d/%d", slot_idx, i, layer_bindings->entries[j].index);
-            err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
-            if (err != 0) {
-                shprint(sh, "Failed to save layer binding! Error code = %d", err);
-                return err;
-            }
-        }
+    char prefix[16];
+    snprintf(prefix, sizeof(prefix), "slots/%d", slot_idx);
+    err = save_slot_payload(prefix, &config.system, sh);
+    if (err != 0) {
+        return err;
     }
 
     settings_commit();
@@ -563,36 +604,10 @@ int keymap_shell_activate_slot(const uint8_t slot_idx) {
 
     clear_slot("keymap");
 
-    int err = 0;
     const struct keymap_slot* slot = &config.slots[slot_idx];
-    if (slot->order_size > 0) {
-        err = settings_save_one("keymap/layer_order", slot->order_data, slot->order_size);
-        if (err != 0) {
-            LOG_ERR("Failed to activate layer order! Error code = %d", err);
-            return err;
-        }
-    }
-
-    char key[32];
-    for (int i = 0; i < ZMK_KEYMAP_LAYERS_LEN; i++) {
-        if (slot->names_size[i] != 0) {
-            snprintf(key, sizeof(key), "keymap/l_n/%d", i);
-            err = settings_save_one(key, slot->names_data[i], slot->names_size[i]);
-            if (err != 0) {
-                LOG_ERR("Failed to activate layer name! Error code = %d", err);
-                return err;
-            }
-        }
-
-        const struct layer_bindings* layer_bindings = &slot->bindings[i];
-        for (uint16_t j = 0; j < layer_bindings->count; j++) {
-            snprintf(key, sizeof(key), "keymap/l/%d/%d", i, layer_bindings->entries[j].index);
-            err = settings_save_one(key, layer_bindings->entries[j].data, layer_bindings->entries[j].length);
-            if (err != 0) {
-                LOG_ERR("Failed to activate layer binding! Error code = %d", err);
-                return err;
-            }
-        }
+    const int err = save_slot_payload("keymap", slot, NULL);
+    if (err != 0) {
+        return err;
     }
 
     settings_commit();
