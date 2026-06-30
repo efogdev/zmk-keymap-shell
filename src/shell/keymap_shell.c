@@ -19,6 +19,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 ZAF_CUSTOM_EVENT_DEFINE(ks_keymap_changed, "keymap-slot-switched");
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+#include <zmk_bistable_behavior/bistable.h>
+#endif
+
 #define shprint(_sh, _fmt, ...) \
 do { \
   if ((_sh) != NULL) \
@@ -49,6 +53,11 @@ struct keymap_slot {
     const char* name;
 
     bool is_free;
+
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    bool has_bistable;
+    uint8_t bistable_slot;
+#endif
 };
 
 struct keymap_shell_config {
@@ -215,9 +224,20 @@ static int load_slot_cb(const char *key, const size_t len, const settings_read_c
         layer_bindings->entries[layer_bindings->count].data = binding_data;
         layer_bindings->count = new_count;
         data->slot->total_size += len;
-        
+
         shprint(data->sh, " > Found binding for layer %d (%d bytes)", layer, len);
     }
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    else if (settings_name_steq(key, "bistable", &next)) {
+        uint8_t val;
+        if (len == sizeof(val) && read_cb(cb_arg, &val, sizeof(val)) == sizeof(val) && val <= 1) {
+            data->slot->bistable_slot = val;
+            data->slot->has_bistable = true;
+            data->slot->total_size += len;
+            shprint(data->sh, " > Found bistable slot (%d)", val);
+        }
+    }
+#endif
 
     return 0;
 }
@@ -262,6 +282,11 @@ static void free_slot(struct keymap_slot* slot) {
     slot->order_size = 0;
     slot->total_size = 0;
     slot->is_free = true;
+
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    slot->has_bistable = false;
+    slot->bistable_slot = 0;
+#endif
 }
 
 static void free_all_slots(void) {
@@ -451,6 +476,16 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
         return err;
     }
 
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    const uint8_t bistable_slot = zbs_get_slot();
+    snprintf(key, sizeof(key), "slots/%d/bistable", slot_idx);
+    err = settings_save_one(key, &bistable_slot, sizeof(bistable_slot));
+    if (err != 0) {
+        shprint(sh, "Failed to save bistable slot! Error code = %d", err);
+        return err;
+    }
+#endif
+
     settings_commit();
     shprint(sh, "Saved: slot %d (%s).", slot_idx + 1, argv[2]);
     return 0;
@@ -612,6 +647,13 @@ int keymap_shell_activate_slot(const uint8_t slot_idx) {
 
     settings_commit();
     zmk_keymap_discard_changes();
+
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    if (slot->has_bistable) {
+        zbs_set_slot(slot->bistable_slot);
+    }
+#endif
+
     LOG_INF("Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
 #if IS_ENABLED(CONFIG_ZMK_ADAPTIVE_FEEDBACK)
     zaf_custom_event_trigger(&ks_keymap_changed);
