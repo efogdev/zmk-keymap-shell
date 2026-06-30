@@ -21,6 +21,12 @@ ZAF_CUSTOM_EVENT_DEFINE(ks_keymap_changed, "keymap-slot-switched");
 
 #if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
 #include <zmk_bistable_behavior/bistable.h>
+#if IS_ENABLED(CONFIG_ZMK_RUNTIME_CONFIG)
+#include <zmk_runtime_config/runtime_config.h>
+#else
+#define ZRC_GET(key, default_val) (default_val)
+#endif
+#define ZBS_DEFAULT_SLOT ((uint8_t)ZRC_GET(ZBS_DEFAULT_SLOT_KEY, CONFIG_ZMK_BISTABLE_BEHAVIOR_DEFAULT_SLOT))
 #endif
 
 #define shprint(_sh, _fmt, ...) \
@@ -317,6 +323,9 @@ static void load_system(const struct shell *sh) {
         LOG_ERR("Failed to load system subtree for keymap: %d", err);
     }
     config.system.is_free = config.system.total_size == 0;
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    config.system.is_free = config.system.is_free && zbs_get_slot() == ZBS_DEFAULT_SLOT;
+#endif
 
     shprint(sh, "");
     shprint(sh, "Reading slots...");
@@ -602,6 +611,9 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
 void keymap_restore() {
     clear_slot("keymap");
     zmk_keymap_discard_changes();
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+    zbs_set_slot(ZBS_DEFAULT_SLOT);
+#endif
 #if IS_ENABLED(CONFIG_ZMK_ADAPTIVE_FEEDBACK)
     zaf_custom_event_trigger(&ks_keymap_changed);
 #endif
@@ -649,9 +661,7 @@ int keymap_shell_activate_slot(const uint8_t slot_idx) {
     zmk_keymap_discard_changes();
 
 #if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
-    if (slot->has_bistable) {
-        zbs_set_slot(slot->bistable_slot);
-    }
+    zbs_set_slot(slot->has_bistable ? slot->bistable_slot : ZBS_DEFAULT_SLOT);
 #endif
 
     LOG_INF("Slot %d (%s) successfully activated!", slot_idx + 1, slot->name);
