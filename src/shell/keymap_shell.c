@@ -623,6 +623,15 @@ static int cmd_status(const struct shell *sh, const size_t argc, char **argv) {
                 }
             }
 
+#if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
+            if (is_active) {
+                const uint8_t slot_bistable = slot->has_bistable ? slot->bistable_slot : ZBS_DEFAULT_SLOT;
+                if (zbs_get_slot() != slot_bistable) {
+                    is_active = false;
+                }
+            }
+#endif
+
             if (is_active) {
                 found_active = true;
             }
