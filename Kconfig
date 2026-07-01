@@ -6,3 +6,4 @@
 #
 
 rsource "src/shell/Kconfig"
+rsource "src/output_keymap/Kconfig"

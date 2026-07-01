@@ -1,0 +1,9 @@
+config ZMK_KEYMAP_OUTPUT_ASSIGN
+	bool "Auto-activate keymap slots per output (USB/BLE profile)"
+	default y
+	depends on ZMK_KEYMAP_SHELL && ZMK_KEYMAP_SETTINGS_STORAGE && ZMK_BLE
+
+config ZMK_KEYMAP_OUTPUT_ASSIGN_BOOT_DELAY_MS
+	int "Delay before syncing the current output at boot (ms)"
+	default 2000
+	depends on ZMK_KEYMAP_OUTPUT_ASSIGN

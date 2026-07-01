@@ -347,6 +347,37 @@ static void load_system(const struct shell *sh) {
 
 SYS_INIT(keymap_shell_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
+int keymap_shell_ensure_initialized(void) {
+    if (!config.initialized) {
+        load_system(NULL);
+    }
+    return 0;
+}
+
+int keymap_shell_resolve_slot(const char *str) {
+    char *endptr;
+    const unsigned long parsed = strtoul(str, &endptr, 10);
+    if (*endptr == '\0' && parsed > 0 && parsed <= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
+        return (int)(parsed - 1);
+    }
+
+    for (int i = 0; i < CONFIG_ZMK_KEYMAP_SHELL_SLOTS; i++) {
+        if (!config.slots[i].is_free && config.slots[i].name != NULL &&
+            strcmp(config.slots[i].name, str) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+const char *keymap_shell_slot_name(const uint8_t slot_idx) {
+    if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS || config.slots[slot_idx].is_free) {
+        return NULL;
+    }
+    return config.slots[slot_idx].name;
+}
+
 static void report_save_err(const struct shell *sh, const char *what, const int err) {
     if (sh != NULL) {
         shprint(sh, "Failed to access %s! Error code = %d", what, err);
@@ -467,7 +498,7 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
         return -ENOTSUP;
     }
 
-    char key[32];
+    char key[MIN(CONFIG_ZMK_KEYMAP_SHELL_SLOT_NAME_MAX + 10, 20)];
     snprintf(key, sizeof(key), "slots/%d", slot_idx);
     clear_slot(key);
 
@@ -686,30 +717,14 @@ static int cmd_activate(const struct shell *sh, const size_t argc, char **argv) 
         return 0;
     }
 
-    int err = 0;
-    char* endptr;
-    uint8_t slot_idx;
-    const unsigned long parsed = strtoul(argv[1], &endptr, 10);
-    
-    if (*endptr == '\0' && parsed > 0 && parsed <= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
-        slot_idx = parsed - 1;
-    } else {
-        slot_idx = CONFIG_ZMK_KEYMAP_SHELL_SLOTS;
-        for (int i = 0; i < CONFIG_ZMK_KEYMAP_SHELL_SLOTS; i++) {
-            if (!config.slots[i].is_free && config.slots[i].name != NULL && 
-                strcmp(config.slots[i].name, argv[1]) == 0) {
-                slot_idx = i;
-                break;
-            }
-        }
-        
-        if (slot_idx >= CONFIG_ZMK_KEYMAP_SHELL_SLOTS) {
-            shprint(sh, "Slot not found!");
-            return -ENOENT;
-        }
+    const int resolved = keymap_shell_resolve_slot(argv[1]);
+    if (resolved < 0) {
+        shprint(sh, "Slot not found!");
+        return -ENOENT;
     }
 
-    err = keymap_shell_activate_slot(slot_idx);
+    const uint8_t slot_idx = resolved;
+    const int err = keymap_shell_activate_slot(slot_idx);
     if (err == -EINVAL) {
         shprint(sh, "Invalid slot!");
         return err;
@@ -734,6 +749,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_keymap,
     SHELL_CMD(destroy, NULL, "Delete the slot and its data.", cmd_destroy),
     SHELL_CMD(restore, NULL, "Restore the factory default keymap.", cmd_restore),
     SHELL_CMD(free, NULL, "Free all allocated memory and uninitialize.", cmd_free),
+    SHELL_COND_CMD(CONFIG_ZMK_KEYMAP_OUTPUT_ASSIGN, assign, NULL,
+                   "Bind an output to a keymap slot.", keymap_assign_cmd),
     SHELL_SUBCMD_SET_END
 );
 
