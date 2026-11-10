@@ -100,7 +100,6 @@ static void clear_slot(const char* key) {
     }
 
     settings_delete(key);
-    settings_commit();
 }
 
 static int load_slot_cb(const char *key, const size_t len, const settings_read_cb read_cb, void *cb_arg, void *param) {
@@ -526,7 +525,6 @@ static int cmd_save(const struct shell *sh, const size_t argc, char **argv) {
     }
 #endif
 
-    settings_commit();
     shprint(sh, "Saved: slot %d (%s).", slot_idx + 1, argv[2]);
     return 0;
 }
@@ -697,7 +695,6 @@ int keymap_shell_activate_slot(const uint8_t slot_idx) {
         return err;
     }
 
-    settings_commit();
     zmk_keymap_discard_changes();
 
 #if IS_ENABLED(CONFIG_ZMK_BISTABLE_BEHAVIOR)
