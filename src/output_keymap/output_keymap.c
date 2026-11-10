@@ -157,7 +157,6 @@ int keymap_assign_cmd(const struct shell *sh, const size_t argc, char **argv) {
 
     if (argc == 2) {
         settings_delete(key);
-        settings_commit();
         assign_names[epkey][0] = '\0';
         shell_print(sh, "Cleared assignment for %s.", argv[1]);
         return 0;
@@ -187,7 +186,6 @@ int keymap_assign_cmd(const struct shell *sh, const size_t argc, char **argv) {
         shell_print(sh, "Failed to save assignment! Error code = %d", err);
         return err;
     }
-    settings_commit();
 
     memcpy(assign_names[epkey], name, len);
     assign_names[epkey][len] = '\0';
